@@ -1,24 +1,60 @@
+/* ==========================================================================
+   Dara — design tokens
+   Palette drawn from the game's own material world: indigo-dyed adire cloth
+   as the ground, camwood and palm-gold as the two playing pieces, chalked
+   lines as the board grid.
+   ========================================================================== */
+
 :root {
-  --bg: #ffffff;
-  --surface: #f4f4f3;
-  --border: #e3e2e0;
-  --text: #1a1a19;
-  --text-secondary: #6b6a67;
-  --text-muted: #9a9895;
-  --accent: #378ADD;
-  --accent-bg: #e6f1fb;
-  --danger-bg: #fbe7e4;
-  --success-bg: #e3f5ec;
-  --radius: 10px;
+  --ink: #14152B;
+  --dusk: #1F2142;
+  --dusk-2: #272A57;
+  --camwood: #B8452C;
+  --camwood-light: #D46A4C;
+  --palm: #D6A94A;
+  --palm-light: #E6C275;
+  --chalk: #EDE8DC;
+  --ash: #B0ADC7;
+  --ash-dim: #706D8C;
+  --bead: #5B8C5A;
+  --rust: #9A3A3A;
+
+  --bg: var(--ink);
+  --surface: var(--dusk);
+  --surface-2: var(--dusk-2);
+  --border: rgba(214, 169, 74, 0.16);
+  --border-strong: rgba(214, 169, 74, 0.34);
+  --text: var(--chalk);
+  --text-secondary: var(--ash);
+  --text-muted: var(--ash-dim);
+
+  --accent: var(--camwood);
+  --accent-light: var(--camwood-light);
+  --accent-bg: rgba(184, 69, 44, 0.20);
+  --gold: var(--palm);
+  --gold-bg: rgba(214, 169, 74, 0.18);
+  --danger-bg: rgba(154, 58, 58, 0.30);
+  --success-bg: rgba(91, 140, 90, 0.26);
+
+  --radius: 16px;
+  --radius-sm: 9px;
+  --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --font-body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 * { box-sizing: border-box; }
 
+::selection { background: var(--accent); color: var(--chalk); }
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-body);
   background: var(--bg);
   color: var(--text);
+  background-image:
+    radial-gradient(circle, rgba(214, 169, 74, 0.10) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-attachment: fixed;
 }
 
 #app {
@@ -27,82 +63,169 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 16px;
+  padding: 20px 18px;
 }
+
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; margin: 0; }
+
+a { color: var(--gold); }
+
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* ---------------- Form controls ---------------- */
 
 input, select, button {
-  font-family: inherit;
-  font-size: 14px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  padding: 8px 10px;
-}
-
-button {
-  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  padding: 10px 12px;
   background: var(--surface);
   color: var(--text);
 }
 
+input::placeholder { color: var(--text-muted); }
+
+input:focus, select:focus {
+  border-color: var(--gold);
+}
+
+button {
+  cursor: pointer;
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 500;
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+
+button:hover { background: var(--dusk-2); }
+button:active { transform: scale(0.97); }
+
 button.primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--chalk);
   border: none;
 }
+button.primary:hover { background: var(--accent-light); }
 
 .error-text {
-  color: #b3261e;
+  color: #E8938A;
   font-size: 13px;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
-.nav {
-  display: flex;
-  border-top: 1px solid var(--border);
-  margin-top: auto;
-  padding-top: 6px;
+/* ---------------- Auth screen: the hero moment ---------------- */
+
+.auth-hero {
+  padding: 14vh 0 8px;
+  text-align: center;
 }
 
-.nav button {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  padding: 8px 2px;
+.auth-wordmark {
+  font-family: var(--font-display);
+  font-size: 52px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--chalk);
+  margin: 0;
+  animation: wordmark-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.auth-wordmark em {
+  font-style: italic;
+  color: var(--gold);
 }
 
-.nav button.active { color: var(--accent); }
+.auth-tagline {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 15px;
+  color: var(--ash);
+  margin: 6px 0 0;
+}
+
+@keyframes wordmark-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------------- Structural helpers ---------------- */
 
 .section-title {
-  font-size: 16px;
+  font-family: var(--font-display);
+  font-size: 22px;
   font-weight: 600;
-  margin: 0 0 12px;
+  margin: 4px 0 14px;
 }
 
 .hint {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--text-muted);
   margin-bottom: 12px;
+  line-height: 1.5;
 }
 
 .card {
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 10px 12px;
-  margin-bottom: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
 }
+
+.row { display: flex; gap: 10px; align-items: center; }
+.row.between { justify-content: space-between; }
+.row.wrap { flex-wrap: wrap; }
+
+.progress-track {
+  height: 6px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 8px 0 10px;
+}
+.progress-fill { height: 100%; background: var(--gold); }
+
+.list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 2px;
+  border-bottom: 1px solid var(--border);
+}
+.list-row:last-child { border-bottom: none; }
+
+.avatar {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--chalk);
+  font-weight: 600;
+  font-family: var(--font-display);
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+/* ---------------- Game board ----------------
+   The board reads as a carved wooden surface: a warm inset well per point,
+   with pieces rendered as domed seeds rather than flat tokens. */
 
 .grid-board {
   display: grid;
-  gap: 0;
-  border: 1px solid var(--border);
+  gap: 3px;
+  background: var(--dusk-2);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   overflow: hidden;
   max-width: 320px;
+  padding: 6px;
 }
 
 .cell {
@@ -110,57 +233,58 @@ button.primary {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 0.5px solid var(--border);
-  background: var(--surface);
+  border-radius: 6px;
+  background: var(--ink);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
   cursor: pointer;
+  transition: background 0.15s ease;
 }
 
 .cell .piece {
-  width: 70%;
-  height: 70%;
+  width: 72%;
+  height: 72%;
   border-radius: 50%;
+  box-shadow: inset -3px -4px 6px rgba(0, 0, 0, 0.30), inset 2px 3px 4px rgba(255, 255, 255, 0.20), 0 2px 3px rgba(0, 0, 0, 0.35);
 }
 
-.row { display: flex; gap: 8px; align-items: center; }
-.row.between { justify-content: space-between; }
-.row.wrap { flex-wrap: wrap; }
+/* ---------------- Bottom navigation ---------------- */
 
-.progress-track {
-  height: 6px;
-  background: var(--surface);
-  border-radius: 4px;
-  overflow: hidden;
-  margin: 8px 0 10px;
-}
-.progress-fill { height: 100%; background: var(--accent); }
-
-.list-row {
+.nav {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 4px;
-  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+  padding-top: 10px;
+  gap: 4px;
 }
 
-.avatar {
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-weight: 600;
-  flex-shrink: 0;
+.nav button {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 9px 2px;
+  border-radius: var(--radius-sm);
 }
+
+.nav button.active {
+  color: var(--chalk);
+  background: var(--accent-bg);
+}
+
+/* ---------------- Chat ---------------- */
 
 .chat-log {
-  max-height: 300px;
+  max-height: 320px;
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 8px;
+  padding: 12px;
   margin-bottom: 10px;
+  background: var(--surface);
 }
 
-.msg { margin-bottom: 8px; font-size: 13px; }
-.msg .who { font-weight: 600; margin-right: 6px; }
-.msg.mine .who { color: var(--accent); }
+.msg { margin-bottom: 10px; font-size: 13.5px; line-height: 1.5; }
+.msg .who { font-weight: 600; margin-right: 6px; color: var(--ash); }
+.msg.mine .who { color: var(--gold); }
