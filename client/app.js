@@ -14,6 +14,16 @@
   let chatMessages = [];
   let friendUsernameInput = '';
 
+  let notifications = [];
+  let historyState = [];
+
+  let groupsState = [];
+  let selectedGroupId = null;
+  let groupMessages = [];
+  let showNewGroupForm = false;
+  let newGroupName = '';
+  let newGroupMemberIds = [];
+
   // ---------------- Game state ----------------
   const CONFIGS = { '5x5': { rows: 5, cols: 5, pieces: 10 }, '6x5': { rows: 6, cols: 5, pieces: 12 }, '6x6': { rows: 6, cols: 6, pieces: 14 } };
   let boardKey = '6x5';
@@ -98,6 +108,16 @@
         render();
       }
     });
+    socket.on('new_group_message', (msg) => {
+      if (selectedGroupId && msg.groupId === selectedGroupId) {
+        groupMessages.push(msg);
+        render();
+      }
+    });
+    socket.on('new_notification', (n) => {
+      notifications.unshift(n);
+      render();
+    });
     socket.on('message_error', (payload) => {
       alert((payload && payload.error) || 'Message could not be sent.');
     });
@@ -153,7 +173,7 @@
   async function reportResult(winner) {
     if (!aiEnabled) return;
     try {
-      const data = await api('/game/result', { method: 'POST', body: { result: winner === 1 ? 'win' : 'loss' } });
+      const data = await api('/game/result', { method: 'POST', body: { result: winner === 1 ? 'win' : 'loss', boardSize: boardKey } });
       if (me) { me.rating = data.rating; me.wins = data.wins; me.losses = data.losses; me.aiGames = (me.aiGames || 0) + 1; }
     } catch (e) { /* non-fatal */ }
   }
@@ -322,6 +342,8 @@
   async function openChat(friendId) {
     selectedFriendId = friendId;
     chatMessages = await api('/messages/' + friendId);
+    const ids = notifications.filter(n => !n.isRead && n.type === 'message' && n.data && n.data.fromUserId === friendId).map(n => n.id);
+    if (ids.length) await markNotificationsRead(ids);
     render();
   }
   function sendMessage(text) {
@@ -330,13 +352,69 @@
     socket.emit('private_message', { toUserId: selectedFriendId, text });
   }
 
+  // ---------------- Match history ----------------
+  async function loadHistory() {
+    historyState = await api('/history');
+    render();
+  }
+
+  // ---------------- Notifications ----------------
+  async function loadNotifications() {
+    notifications = await api('/notifications');
+    render();
+  }
+  async function markNotificationsRead(ids) {
+    try { await api('/notifications/read', { method: 'POST', body: ids ? { ids } : {} }); } catch (e) { /* non-fatal */ }
+    if (ids) notifications.forEach(n => { if (ids.indexOf(n.id) !== -1) n.isRead = true; });
+    else notifications.forEach(n => { n.isRead = true; });
+  }
+  function unreadCountByType(types) {
+    return notifications.filter(n => !n.isRead && types.indexOf(n.type) !== -1).length;
+  }
+
+  // ---------------- Groups ----------------
+  async function loadGroups() {
+    groupsState = await api('/groups');
+    render();
+  }
+  async function createGroup() {
+    const name = (newGroupName || '').trim();
+    if (!name) { alert('Enter a group name'); return; }
+    if (!newGroupMemberIds.length) { alert('Pick at least one friend'); return; }
+    try {
+      await api('/groups', { method: 'POST', body: { name, memberIds: newGroupMemberIds } });
+      newGroupName = ''; newGroupMemberIds = []; showNewGroupForm = false;
+      await loadGroups();
+    } catch (e) { alert(e.message); }
+  }
+  function toggleGroupMember(id) {
+    const ix = newGroupMemberIds.indexOf(id);
+    if (ix === -1) newGroupMemberIds.push(id); else newGroupMemberIds.splice(ix, 1);
+    render();
+  }
+  async function openGroup(groupId) {
+    selectedGroupId = groupId;
+    groupMessages = await api('/groups/' + groupId + '/messages');
+    const ids = notifications.filter(n => !n.isRead && n.type === 'group_message' && n.data && n.data.groupId === groupId).map(n => n.id);
+    if (ids.length) await markNotificationsRead(ids);
+    render();
+  }
+  function sendGroupMessage(text) {
+    text = (text || '').trim();
+    if (!text || !selectedGroupId || !socket) return;
+    socket.emit('group_message', { groupId: selectedGroupId, text });
+  }
+
   // ---------------- Rendering ----------------
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
   function renderAuth() {
     root.innerHTML = `
-      <h1 style="font-size:20px;margin:24px 0 4px;">Dara</h1>
-      <div class="hint">${authMode === 'login' ? 'Log in to your account' : 'Create an account'}</div>
+      <div class="auth-hero">
+        <h1 class="auth-wordmark">D<em>a</em>ra</h1>
+        <p class="auth-tagline">a line of three, and the board is yours</p>
+      </div>
+      <div class="hint" style="text-align:center;margin-top:18px;">${authMode === 'login' ? 'Log in to your account' : 'Create an account'}</div>
       <div class="card">
         <div style="margin-bottom:4px;"><input id="f-username" placeholder="Username" style="width:100%;" /></div>
         <div class="hint" style="margin-bottom:10px;">3-24 characters: letters, numbers, _ or -</div>
@@ -345,9 +423,9 @@
         ${authError ? `<div class="error-text">${esc(authError)}</div>` : ''}
         <button class="primary" id="f-submit" style="width:100%;margin-top:6px;">${authMode === 'login' ? 'Log in' : 'Register'}</button>
       </div>
-      <div style="font-size:13px;color:var(--text-secondary);">
+      <div style="font-size:13px;color:var(--text-secondary);text-align:center;">
         ${authMode === 'login' ? "New here?" : "Already have an account?"}
-        <a href="#" id="f-switch" style="color:var(--accent);">${authMode === 'login' ? 'Create an account' : 'Log in'}</a>
+        <a href="#" id="f-switch">${authMode === 'login' ? 'Create an account' : 'Log in'}</a>
       </div>
     `;
     document.getElementById('f-submit').addEventListener('click', () => {
@@ -369,14 +447,14 @@
       <label style="font-size:13px;color:var(--text-secondary);display:flex;align-items:center;gap:6px;"><input type="checkbox" id="g-ai"${aiEnabled ? ' checked' : ''}/> Play vs AI</label>
     </div>`;
     h += `<div class="row between" style="margin-bottom:10px;">
-      <div class="row"><span style="width:12px;height:12px;border-radius:50%;background:${current === 1 ? '#378ADD' : '#D85A30'};display:inline-block;"></span><span style="font-weight:500;">${turnLabel}</span></div>
+      <div class="row"><span style="width:12px;height:12px;border-radius:50%;background:${current === 1 ? 'var(--accent)' : 'var(--gold)'};display:inline-block;"></span><span style="font-weight:500;">${turnLabel}</span></div>
       <button id="g-reset">Reset</button>
     </div>`;
     h += `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;min-height:18px;">${sub}</div>`;
     h += `<div id="g-grid" class="grid-board" style="grid-template-columns:repeat(${COLS},1fr);"></div>`;
     h += `<div class="row wrap" style="margin-top:12px;font-size:13px;color:var(--text-secondary);">
-      <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#378ADD;margin-right:6px;"></span>Player 1: ${p1c} on board</span>
-      <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#D85A30;margin-right:6px;"></span>${name2}: ${p2c} on board</span>
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--accent);margin-right:6px;"></span>Player 1: ${p1c} on board</span>
+      <span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--gold);margin-right:6px;"></span>${name2}: ${p2c} on board</span>
     </div>`;
     if (aiEnabled && me) {
       h += `<div class="card" style="margin-top:14px;">
@@ -388,7 +466,7 @@
   }
 
   function renderProfileTab() {
-    const swatches = ['#378ADD', '#D85A30', '#0F9D6B', '#8B5CF6', '#D97706', '#DB2777'];
+    const swatches = ['#B8452C', '#D6A94A', '#5B8C5A', '#7B6FC4', '#3C7A8C', '#B0507A'];
     return `
       <div class="section-title">Profile</div>
       <div class="row" style="margin-bottom:16px;">
@@ -406,6 +484,12 @@
         <div style="font-weight:500;margin-bottom:6px;">Stats</div>
         <div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">Record vs AI: ${me.wins}W - ${me.losses}L<br/>AI games played: ${me.aiGames}</div>
       </div>
+      <div style="font-size:13px;font-weight:500;margin:14px 0 6px;">Recent games</div>
+      ${historyState.length ? historyState.map(h => `
+        <div class="list-row">
+          <span>${h.result === 'win' ? 'Win' : 'Loss'} vs AI <span style="color:var(--text-muted);">(${esc(h.boardSize || '')})</span></span>
+          <span style="font-size:12px;color:var(--text-secondary);">${h.ratingAfter} rating</span>
+        </div>`).join('') : '<div style="font-size:13px;color:var(--text-secondary);">No games recorded yet - play a round vs AI.</div>'}
       <button id="p-logout" style="margin-top:16px;">Log out</button>
     `;
   }
@@ -430,7 +514,7 @@
     if (!friendsState.friends.length) h += `<div style="font-size:13px;color:var(--text-secondary);">No friends yet - add one by username above.</div>`;
     friendsState.friends.forEach(f => {
       h += `<div class="list-row">
-        <span class="row"><span class="avatar" style="width:26px;height:26px;font-size:12px;background:${f.avatarColor || '#378ADD'};">${esc(f.username.charAt(0).toUpperCase())}</span>${esc(f.username)}</span>
+        <span class="row"><span class="avatar" style="width:26px;height:26px;font-size:12px;background:${f.avatarColor || 'var(--accent)'};">${esc(f.username.charAt(0).toUpperCase())}</span>${esc(f.username)}</span>
         <span class="row">
           <button data-id="${f.id}" class="fr-chat">Chat</button>
           <button data-id="${f.id}" class="fr-remove">Remove</button>
@@ -440,30 +524,87 @@
   }
 
   function renderChatTab() {
-    if (!selectedFriendId) {
-      const opts = friendsState.friends.map(f => `<option value="${f.id}">${esc(f.username)}</option>`).join('');
-      return `<div class="section-title">Chat</div>
-        <div class="hint">Pick a friend to start a private, live conversation.</div>
-        ${friendsState.friends.length ? `<select id="c-pick" style="width:100%;margin-bottom:10px;"><option value="">Choose a friend...</option>${opts}</select><button id="c-open" class="primary" style="width:100%;">Open chat</button>`
-          : `<div style="font-size:13px;color:var(--text-secondary);">Add a friend first from the Friends tab.</div>`}`;
+    if (selectedFriendId) {
+      const friend = friendsState.friends.find(f => f.id === selectedFriendId);
+      let h = `<div class="section-title">${friend ? esc(friend.username) : 'Chat'}</div>`;
+      h += `<div class="chat-log" id="c-log">`;
+      if (!chatMessages.length) h += `<div style="font-size:13px;color:var(--text-muted);">No messages yet - say hello.</div>`;
+      chatMessages.forEach(m => {
+        const mine = m.senderId === me.id;
+        h += `<div class="msg ${mine ? 'mine' : ''}"><span class="who">${mine ? 'You' : (friend ? esc(friend.username) : '')}</span>${esc(m.text)}</div>`;
+      });
+      h += `</div>`;
+      h += `<div class="row"><input id="c-input" placeholder="Message" style="flex:1;"/><button id="c-send" class="primary">Send</button></div>`;
+      h += `<button id="c-back" style="margin-top:10px;">Back</button>`;
+      return h;
     }
-    const friend = friendsState.friends.find(f => f.id === selectedFriendId);
-    let h = `<div class="section-title">${friend ? esc(friend.username) : 'Chat'}</div>`;
-    h += `<div class="chat-log" id="c-log">`;
-    if (!chatMessages.length) h += `<div style="font-size:13px;color:var(--text-muted);">No messages yet - say hello.</div>`;
-    chatMessages.forEach(m => {
-      const mine = m.senderId === me.id;
-      h += `<div class="msg ${mine ? 'mine' : ''}"><span class="who">${mine ? 'You' : (friend ? esc(friend.username) : '')}</span>${esc(m.text)}</div>`;
-    });
-    h += `</div>`;
-    h += `<div class="row"><input id="c-input" placeholder="Message" style="flex:1;"/><button id="c-send" class="primary">Send</button></div>`;
-    h += `<button id="c-back" style="margin-top:10px;">Back to friend list</button>`;
+
+    if (selectedGroupId) {
+      const group = groupsState.find(g => g.id === selectedGroupId);
+      let h = `<div class="section-title">${group ? esc(group.name) : 'Group'}</div>`;
+      if (group) h += `<div class="hint">${group.members.map(m => esc(m.username)).join(', ')}</div>`;
+      h += `<div class="chat-log" id="c-log">`;
+      if (!groupMessages.length) h += `<div style="font-size:13px;color:var(--text-muted);">No messages yet - say hello.</div>`;
+      groupMessages.forEach(m => {
+        const mine = m.senderId === me.id;
+        h += `<div class="msg ${mine ? 'mine' : ''}"><span class="who">${mine ? 'You' : esc(m.senderUsername)}</span>${esc(m.text)}</div>`;
+      });
+      h += `</div>`;
+      h += `<div class="row"><input id="gc-input" placeholder="Message" style="flex:1;"/><button id="gc-send" class="primary">Send</button></div>`;
+      h += `<button id="gc-back" style="margin-top:10px;">Back</button>`;
+      return h;
+    }
+
+    let h = `<div class="section-title">Chat</div>`;
+
+    if (showNewGroupForm) {
+      h += `<div class="card">
+        <div style="font-weight:500;margin-bottom:8px;">New group</div>
+        <input id="ng-name" placeholder="Group name" style="width:100%;margin-bottom:10px;" value="${esc(newGroupName)}"/>
+        <div style="font-size:13px;color:var(--text-secondary);margin-bottom:6px;">Add friends</div>`;
+      if (!friendsState.friends.length) {
+        h += `<div style="font-size:13px;color:var(--text-secondary);margin-bottom:10px;">You need at least one friend first.</div>`;
+      } else {
+        friendsState.friends.forEach(f => {
+          const checked = newGroupMemberIds.indexOf(f.id) !== -1;
+          h += `<label class="row" style="margin-bottom:6px;"><input type="checkbox" class="ng-member" data-id="${f.id}"${checked ? ' checked' : ''}/> ${esc(f.username)}</label>`;
+        });
+      }
+      h += `<div class="row" style="margin-top:10px;">
+        <button id="ng-create" class="primary">Create</button>
+        <button id="ng-cancel">Cancel</button>
+      </div></div>`;
+    } else {
+      h += `<button id="c-new-group" style="width:100%;margin-bottom:14px;">+ New group</button>`;
+    }
+
+    if (groupsState.length) {
+      h += `<div style="font-size:13px;font-weight:500;margin-bottom:6px;">Groups</div>`;
+      groupsState.forEach(g => {
+        h += `<div class="list-row"><span>${esc(g.name)}</span><button data-id="${g.id}" class="c-open-group">Open</button></div>`;
+      });
+    }
+
+    h += `<div style="font-size:13px;font-weight:500;margin:14px 0 6px;">Direct messages</div>`;
+    if (!friendsState.friends.length) {
+      h += `<div style="font-size:13px;color:var(--text-secondary);">Add a friend first from the Friends tab.</div>`;
+    } else {
+      friendsState.friends.forEach(f => {
+        h += `<div class="list-row"><span>${esc(f.username)}</span><button data-id="${f.id}" class="c-open-direct">Open</button></div>`;
+      });
+    }
     return h;
   }
 
   function renderNav() {
     const tabs = [{ k: 'game', l: 'Game' }, { k: 'profile', l: 'Profile' }, { k: 'friends', l: 'Friends' }, { k: 'chat', l: 'Chat' }];
-    return `<div class="nav">${tabs.map(t => `<button data-tab="${t.k}" class="nav-btn${activeTab === t.k ? ' active' : ''}">${t.l}</button>`).join('')}</div>`;
+    const friendsBadge = friendsState.incomingRequests.length;
+    const chatBadge = unreadCountByType(['message', 'group_message']);
+    const badgeFor = (k) => {
+      const n = k === 'friends' ? friendsBadge : (k === 'chat' ? chatBadge : 0);
+      return n > 0 ? `<span style="position:absolute;top:-2px;right:-8px;background:var(--camwood);color:#fff;font-size:10px;border-radius:8px;padding:1px 5px;min-width:14px;text-align:center;">${n > 9 ? '9+' : n}</span>` : '';
+    };
+    return `<div class="nav">${tabs.map(t => `<button data-tab="${t.k}" class="nav-btn${activeTab === t.k ? ' active' : ''}" style="position:relative;">${t.l}${badgeFor(t.k)}</button>`).join('')}</div>`;
   }
 
   function render() {
@@ -487,7 +628,7 @@
         if (board[i] !== 0) {
           const piece = document.createElement('div');
           piece.className = 'piece';
-          piece.style.background = board[i] === 1 ? '#378ADD' : '#D85A30';
+          piece.style.background = board[i] === 1 ? 'var(--accent)' : 'var(--gold)';
           cell.appendChild(piece);
         }
         cell.addEventListener('click', () => cellClick(i));
@@ -507,7 +648,6 @@
       }));
       document.getElementById('p-logout').addEventListener('click', logout);
     }
-
     if (activeTab === 'friends') {
       document.getElementById('fr-add').addEventListener('click', () => {
         const v = document.getElementById('fr-input').value.trim();
@@ -520,9 +660,6 @@
     }
 
     if (activeTab === 'chat') {
-      const pick = document.getElementById('c-pick');
-      const openBtn = document.getElementById('c-open');
-      if (openBtn) openBtn.addEventListener('click', () => { if (pick.value) openChat(parseInt(pick.value, 10)); });
       const sendBtn = document.getElementById('c-send');
       if (sendBtn) sendBtn.addEventListener('click', () => {
         const inp = document.getElementById('c-input');
@@ -533,13 +670,44 @@
       if (inputEl) inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { sendMessage(inputEl.value); inputEl.value = ''; } });
       const backBtn = document.getElementById('c-back');
       if (backBtn) backBtn.addEventListener('click', () => { selectedFriendId = null; render(); });
+
+      const gcSendBtn = document.getElementById('gc-send');
+      if (gcSendBtn) gcSendBtn.addEventListener('click', () => {
+        const inp = document.getElementById('gc-input');
+        sendGroupMessage(inp.value);
+        inp.value = '';
+      });
+      const gcInputEl = document.getElementById('gc-input');
+      if (gcInputEl) gcInputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { sendGroupMessage(gcInputEl.value); gcInputEl.value = ''; } });
+      const gcBackBtn = document.getElementById('gc-back');
+      if (gcBackBtn) gcBackBtn.addEventListener('click', () => { selectedGroupId = null; render(); });
+
+      document.querySelectorAll('.c-open-direct').forEach(b => b.addEventListener('click', () => openChat(parseInt(b.getAttribute('data-id'), 10))));
+      document.querySelectorAll('.c-open-group').forEach(b => b.addEventListener('click', () => openGroup(parseInt(b.getAttribute('data-id'), 10))));
+
+      const newGroupBtn = document.getElementById('c-new-group');
+      if (newGroupBtn) newGroupBtn.addEventListener('click', () => { showNewGroupForm = true; render(); });
+      const ngCancel = document.getElementById('ng-cancel');
+      if (ngCancel) ngCancel.addEventListener('click', () => { showNewGroupForm = false; newGroupName = ''; newGroupMemberIds = []; render(); });
+      const ngNameInput = document.getElementById('ng-name');
+      if (ngNameInput) ngNameInput.addEventListener('input', (e) => { newGroupName = e.target.value; });
+      document.querySelectorAll('.ng-member').forEach(cb => cb.addEventListener('change', () => toggleGroupMember(parseInt(cb.getAttribute('data-id'), 10))));
+      const ngCreate = document.getElementById('ng-create');
+      if (ngCreate) ngCreate.addEventListener('click', createGroup);
+
       const log = document.getElementById('c-log');
       if (log) log.scrollTop = log.scrollHeight;
     }
 
     document.querySelectorAll('.nav-btn').forEach(btn => btn.addEventListener('click', () => {
       activeTab = btn.getAttribute('data-tab');
-      if (activeTab === 'friends') loadFriends();
+      if (activeTab === 'friends') {
+        loadFriends();
+        const ids = notifications.filter(n => !n.isRead && (n.type === 'friend_request' || n.type === 'friend_accept')).map(n => n.id);
+        if (ids.length) markNotificationsRead(ids);
+      }
+      if (activeTab === 'chat') { loadGroups(); selectedFriendId = null; selectedGroupId = null; }
+      if (activeTab === 'profile') loadHistory();
       render();
     }));
   }
@@ -552,6 +720,8 @@
         await loadMe();
         connectSocket();
         await loadFriends();
+        await loadNotifications();
+        await loadGroups();
       } catch (e) {
         token = null; me = null; localStorage.removeItem('dara_token');
       }
